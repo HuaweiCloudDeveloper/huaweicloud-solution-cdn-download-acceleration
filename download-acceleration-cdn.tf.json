@@ -1,0 +1,106 @@
+{
+    "terraform": {
+        "required_providers": [
+            {
+                "huaweicloud": {
+                    "source": "huawei.com/provider/huaweicloud",
+                    "version": ">=1.35.2"
+                }
+            }
+        ]
+    },
+	"provider": {
+        "huaweicloud": {
+            "cloud": "myhuaweicloud.com",
+            "endpoints": {
+                "iam": "iam.ap-southeast-3.myhuaweicloud.com",
+                "dns": "dns.ap-southeast-3.myhuaweicloud.com",
+                "bss": "bss.myhuaweicloud.com"
+            },
+            "insecure": true,
+            "region": "ap-southeast-3",
+            "auth_url": "https://iam.ap-southeast-3.myhuaweicloud.com/v3"
+        }
+    },
+    "variable": {
+        "bucket_name": {
+            "default": "",
+            "description": "Name of the OBS bucket used to store application data, which is globally unique. Enter 3 to 63 characters, including lowercase letters, digits, hyphens (-), and periods (.).",
+            "type": "string",
+			"nullable": false,
+			"validation": {
+                "condition": "${length(regexall(\"^[a-z\\\\d\\\\.-]{3,63}$\",var.bucket_name))>0}",
+                "error_message": "Invalid input. Please re-enter."
+            }
+        },
+        "accelerate_domain": {
+            "default": "",
+            "description": "Domain name used to access the application to accelerate. The domain name must have been licensed by the Ministry of Industry and Information Technology (MIIT). You are advised to use a level-2 domain name of the public domain specified by publicZone_domain. A domain name consists of one or more parts, representing domains at different levels. These parts, technically known as labels, are concatenated and delimited by periods (.). A label contains letters, digits, and hyphens (-). A domain name can contain up to 75 characters. Do not start or end a domain name with a hyphen (-). Example: download.game-apk1.com.",
+            "type": "string",
+			"nullable": false
+        },
+        "publicZone_domain": {
+            "default": "",
+            "description": "Public domain used by the user service system to provide services. A domain name consists of one or more parts, representing domains at different levels. These parts, technically known as labels, are concatenated and delimited by periods (.). A label contains letters, digits, and hyphens (-). A domain name can contain up to 75 characters. Do not start or end a domain name with a hyphen (-). Example: game-apk1.com.",
+            "type": "string",
+			"nullable": false
+        },
+        "service_type": {
+            "default": "download",
+            "description": "Acceleration service type. Values: download (file download acceleration, default value); web (website acceleration); video (on-demand service acceleration).",
+            "type": "string",
+			"nullable": false,
+            "validation": {
+				"condition": "${contains([\"download\",\"web\",\"video\"], var.service_type)}",
+                "error_message": "Invalid input. Please re-enter."
+			}
+        }
+    },
+    "resource": {
+        "huaweicloud_obs_bucket": {
+            "bucket": {
+                "acl": "public-read",
+                "bucket": "${var.bucket_name}",
+                "multi_az": true
+            }
+        },
+        "huaweicloud_obs_bucket_policy": {
+            "policy": {
+                "bucket": "${huaweicloud_obs_bucket.bucket.id}",
+                "policy": "  {\r\n        \"Statement\": [{\r\n                \"Action\": [\"GetObject\"],\r\n                \"Effect\": \"Allow\",\r\n                \"Principal\": {\r\n                        \"ID\": \"*\"\r\n                },\r\n                \"Resource\": \"${var.bucket_name}/*\",\r\n                \"Sid\": \"AddPerm\"\r\n        }]\r\n  }\r\n"
+            }
+        },
+        "huaweicloud_cdn_domain": {
+            "domain": {
+                "name": "${var.accelerate_domain}",
+                "sources": [
+                    {
+                        "active": 1,
+                        "origin": "${huaweicloud_obs_bucket.bucket.bucket_domain_name}",
+                        "origin_type": "obs_bucket"
+                    }
+                ],
+                "type": "${var.service_type}"
+            }
+        },
+        "huaweicloud_dns_recordset": {
+            "recordse": {
+                "description": "record set",
+                "name": "${var.accelerate_domain}",
+                "records": [
+                    "${huaweicloud_cdn_domain.domain.cname}"
+                ],
+                "ttl": 3000,
+                "type": "CNAME",
+                "zone_id": "${huaweicloud_dns_zone.zone.id}"
+            }
+        },
+        "huaweicloud_dns_zone": {
+            "zone": {
+                "name": "${var.publicZone_domain}",
+                "ttl": 3000,
+                "zone_type": "public"
+            }
+        }
+    }
+}
